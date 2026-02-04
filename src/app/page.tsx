@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 
 type Signal = {
   id: string
@@ -33,8 +33,15 @@ export default function Dashboard() {
   const [signals, setSignals] = useState<Signal[]>([])
   const [picks, setPicks] = useState<SoccerPick[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setError('Supabase not configured. Please set environment variables.')
+      setLoading(false)
+      return
+    }
+
     fetchData()
     
     // Real-time subscription for futures signals
@@ -51,25 +58,34 @@ export default function Dashboard() {
   }, [])
 
   async function fetchData() {
+    if (!isSupabaseConfigured) return
+    
     setLoading(true)
     
-    // Fetch futures signals
-    const { data: signalsData } = await supabase
-      .from('session_analysis')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20)
-    
-    if (signalsData) setSignals(signalsData)
+    try {
+      // Fetch futures signals
+      const { data: signalsData, error: signalsError } = await supabase
+        .from('session_analysis')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20)
+      
+      if (signalsError) throw signalsError
+      if (signalsData) setSignals(signalsData)
 
-    // Fetch soccer picks
-    const { data: picksData } = await supabase
-      .from('model_predictions')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20)
-    
-    if (picksData) setPicks(picksData)
+      // Fetch soccer picks
+      const { data: picksData, error: picksError } = await supabase
+        .from('model_predictions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20)
+      
+      if (picksError) throw picksError
+      if (picksData) setPicks(picksData)
+    } catch (err: any) {
+      console.error('Fetch error:', err)
+      setError(err.message || 'Failed to fetch data')
+    }
     
     setLoading(false)
   }
@@ -115,6 +131,13 @@ export default function Dashboard() {
           ⚽ Soccer O/U
         </button>
       </div>
+
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-6">
+          <p className="text-red-400">⚠️ {error}</p>
+        </div>
+      )}
 
       {/* Loading State */}
       {loading && (
